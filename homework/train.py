@@ -7,15 +7,14 @@ import torch
 import torch.utils.tensorboard as tb
 import torch.optim as optim
 from .models import MLPPlanner, load_model, save_model
-from .datasets.road_dataset import load_data
-
+from homework.datasets.road_dataset import load_data
 
 
 def train(
     exp_dir: str = "logs",
     model_name: str = "linear",
     num_epoch: int = 70,
-    lr: float = 1e-3,
+    lr: float = 1e-6,
     batch_size: int = 128,
     seed: int = 2024,
     **kwargs,
@@ -51,25 +50,28 @@ def train(
     global_step = 0
     metrics = {"train_acc": [], "val_acc": []}
 
-    for epoch in range(10):
+    for epoch in range(20):
         for key in metrics:
             metrics[key].clear()
 
         model.train()
 
-        for img, label in train_data:
-            img, label = img.to(device), label.to(device)
+        for sample in train_data:
+            img = sample["image"].to(device)
+            track_right = sample["track_right"].to(device)
+            track_left = sample["track_left"].to(device)
+            waypoints = sample["waypoints"].to(device)
+            waypoints_mask = sample["waypoints_mask"].to(device)
 
-            logits = model(img)
-            loss = torch.nn.functional.cross_entropy(logits, label)
+
+            predicted_waypoints = model(track_left, track_right)
+            loss = torch.nn.functional.mse_loss(predicted_waypoints, waypoints)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            _, preds = torch.max(logits, 1)
-            accuracy = (preds == label).float().mean().item()
-            metrics["train_acc"].append(accuracy)
+            metrics["train_acc"].append(loss.item())
 
             global_step += 1
 
@@ -77,13 +79,16 @@ def train(
         with torch.inference_mode():
             model.eval()
 
-            for img, label in val_data:
-                img, label = img.to(device), label.to(device)
+            for sample in val_data:
+                img = sample["image"].to(device)
+                track_right = sample["track_right"].to(device)
+                track_left = sample["track_left"].to(device)
+                waypoints = sample["waypoints"].to(device)
+                waypoints_mask = sample["waypoints_mask"].to(device)
 
-                outputs = model(img)
-                preds = outputs.argmax(dim=1)
-                val_acc = (preds == label).float().mean().item()
-                metrics["val_acc"].append(val_acc)
+                predicted_waypoints = model(track_left, track_right)
+                val_loss = torch.nn.functional.mse_loss(predicted_waypoints, waypoints).item()
+                metrics["val_acc"].append(val_loss)
 
         # log average train and val accuracy to tensorboard
         epoch_train_acc = torch.as_tensor(metrics["train_acc"]).mean()
