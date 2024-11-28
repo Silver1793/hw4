@@ -65,7 +65,7 @@ def train(
 
 
             predicted_waypoints = model(track_left, track_right)
-            loss = torch.nn.functional.mse_loss(predicted_waypoints, waypoints)
+            loss = loss = torch.nn.functional.l1_loss(predicted_waypoints, waypoints)
 
             optimizer.zero_grad()
             loss.backward()
@@ -87,7 +87,7 @@ def train(
                 waypoints_mask = sample["waypoints_mask"].to(device)
 
                 predicted_waypoints = model(track_left, track_right)
-                val_loss = torch.nn.functional.mse_loss(predicted_waypoints, waypoints).item()
+                val_loss = torch.nn.functional.l1_loss(predicted_waypoints, waypoints)
                 metrics["val_acc"].append(val_loss)
 
         # log average train and val accuracy to tensorboard
