@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.utils.tensorboard as tb
 import torch.optim as optim
-from .models import MLPPlanner, load_model, save_model
+from .models import MLPPlanner, load_model, save_model, TransformerPlanner
 from homework.datasets.road_dataset import load_data
 
 
@@ -38,7 +38,10 @@ def train(
     logger = tb.SummaryWriter(log_dir)
 
     # note: the grader uses default kwargs, you'll have to bake them in for the final submission
-    model = MLPPlanner()
+    if(model_name == "MLPPlanner"):
+        model = MLPPlanner()
+    elif(model_name == "TransformerPlanner"):
+        model = TransformerPlanner()
     model = model.to(device)
     model.train()
 
@@ -63,9 +66,14 @@ def train(
             waypoints = sample["waypoints"].to(device)
             waypoints_mask = sample["waypoints_mask"].to(device)
 
-
             predicted_waypoints = model(track_left, track_right)
-            loss = loss = torch.nn.functional.l1_loss(predicted_waypoints, waypoints)
+
+            # Apply the mask to the predicted waypoints and the target waypoints
+            masked_predicted_waypoints = predicted_waypoints * waypoints_mask
+            masked_waypoints = waypoints * waypoints_mask
+
+            # Compute the L1 loss with the masked waypoints
+            loss = torch.nn.functional.l1_loss(masked_predicted_waypoints, masked_waypoints)
 
             optimizer.zero_grad()
             loss.backward()
@@ -87,7 +95,13 @@ def train(
                 waypoints_mask = sample["waypoints_mask"].to(device)
 
                 predicted_waypoints = model(track_left, track_right)
-                val_loss = torch.nn.functional.l1_loss(predicted_waypoints, waypoints)
+
+                # Apply the mask to the predicted waypoints and the target waypoints
+                masked_predicted_waypoints = predicted_waypoints * waypoints_mask
+                masked_waypoints = waypoints * waypoints_mask
+
+                # Compute the L1 loss with the masked waypoints
+                val_loss = torch.nn.functional.l1_loss(masked_predicted_waypoints, masked_waypoints)
                 metrics["val_acc"].append(val_loss)
 
         # log average train and val accuracy to tensorboard

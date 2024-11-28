@@ -242,7 +242,6 @@ class MLPPlanner(nn.Module):
         
         return x
 
-
 class TransformerPlanner(nn.Module):
     def __init__(
         self,
@@ -254,8 +253,19 @@ class TransformerPlanner(nn.Module):
 
         self.n_track = n_track
         self.n_waypoints = n_waypoints
+        self.d_model = d_model
 
         self.query_embed = nn.Embedding(n_waypoints, d_model)
+
+        self.track_embed = nn.Linear(2, d_model)  # Assuming each track point has 2 coordinates (x, y)
+
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=8, dim_feedforward=256, dropout=0.1)
+        self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=3)
+
+        self.decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=8, dim_feedforward=256, dropout=0.1)
+        self.transformer_decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=3)
+
+        self.output_layer = nn.Linear(d_model, 2)  # Each waypoint has 2 coordinates (x, y)
 
     def forward(
         self,
@@ -272,11 +282,40 @@ class TransformerPlanner(nn.Module):
         Args:
             track_left (torch.Tensor): shape (b, n_track, 2)
             track_right (torch.Tensor): shape (b, n_track, 2)
-
-        Returns:
-            torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        batch_size = track_left.size(0)
+
+        # Embed the track points
+        track_left_embedded = self.track_embed(track_left)  # shape (b, n_track, d_model)
+        track_right_embedded = self.track_embed(track_right)  # shape (b, n_track, d_model)
+
+        # Concatenate the left and right track embeddings
+        track_embedded = torch.cat((track_left_embedded, track_right_embedded), dim=1)  # shape (b, 2*n_track, d_model)
+
+        # Create positional encodings
+        pos_enc = torch.arange(0, 2 * self.n_track, device=track_embedded.device).unsqueeze(0).repeat(batch_size, 1)  # shape (b, 2*n_track)
+        pos_enc = pos_enc.unsqueeze(-1).float()  # shape (b, 2*n_track, 1)
+        pos_enc = pos_enc.expand(-1, -1, self.d_model)  # shape (b, 2*n_track, d_model)
+
+        # Add positional encodings to track embeddings
+        track_embedded += pos_enc
+
+        # Create query embeddings for the waypoints
+        query_embedded = self.query_embed.weight.unsqueeze(1).repeat(1, batch_size, 1)  # shape (n_waypoints, b, d_model)
+
+        # Pass through the transformer encoder
+        track_embedded = self.transformer_encoder(track_embedded.permute(1, 0, 2))  # shape (2*n_track, b, d_model)
+
+        # Pass through the transformer decoder
+        transformer_output = self.transformer_decoder(
+            tgt=query_embedded,
+            memory=track_embedded,
+        )  # shape (n_waypoints, b, d_model)
+
+        # Predict waypoints
+        waypoints = self.output_layer(transformer_output.permute(1, 0, 2))  # shape (b, n_waypoints, 2)
+
+        return waypoints
 
 
 class CNNPlanner(torch.nn.Module):
