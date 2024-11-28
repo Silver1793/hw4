@@ -2,7 +2,6 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 HOMEWORK_DIR = Path(__file__).resolve().parent
 INPUT_MEAN = [0.2788, 0.2657, 0.2629]
@@ -10,15 +9,32 @@ INPUT_STD = [0.2064, 0.1944, 0.2252]
 
 
 class MLPPlanner(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(MLPPlanner, self).__init__()
+    def __init__(
+        self,
+        n_track: int = 10,
+        n_waypoints: int = 3,
+    ):
+        """
+        Args:
+            n_track (int): number of points in each side of the track
+            n_waypoints (int): number of waypoints to predict
+        """
+        super().__init__()
+
+        self.n_track = n_track
+        self.n_waypoints = n_waypoints
+
+        input_dim = 2 * n_track  # Assuming each track point has 2 coordinates (x, y)
+        hidden_dim = 128  # You can adjust this value
+        output_dim = 2 * n_waypoints  # Each waypoint has 2 coordinates (x, y)
+
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
         x = self.fc3(x)
         return x
 
