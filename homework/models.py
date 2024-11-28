@@ -8,6 +8,10 @@ INPUT_MEAN = [0.2788, 0.2657, 0.2629]
 INPUT_STD = [0.2064, 0.1944, 0.2252]
 
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 class MLPPlanner(nn.Module):
     def __init__(
         self,
@@ -24,7 +28,7 @@ class MLPPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        input_dim = 2 * n_track  # Assuming each track point has 2 coordinates (x, y)
+        input_dim = 2 * n_track * 2  # 2 coordinates (x, y) for each point in track_left and track_right
         hidden_dim = 128  # You can adjust this value
         output_dim = 2 * n_waypoints  # Each waypoint has 2 coordinates (x, y)
 
@@ -32,10 +36,26 @@ class MLPPlanner(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
+    def forward(
+        self,
+        track_left: torch.Tensor,
+        track_right: torch.Tensor,
+        **kwargs,
+    ) -> torch.Tensor:
+        """
+        Predicts waypoints from the left and right boundaries of the track.
+        """
+        # Flatten the input tensors and concatenate them
+        x = torch.cat((track_left.flatten(start_dim=1), track_right.flatten(start_dim=1)), dim=1)
+        
+        # Pass through the MLP
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
         x = self.fc3(x)
+        
+        # Reshape the output to (batch_size, n_waypoints, 2)
+        x = x.view(-1, self.n_waypoints, 2)
+        
         return x
 
 
